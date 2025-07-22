@@ -1,0 +1,16 @@
+{
+  "create_account": "Bɔ w’akawnt ho kwa",
+  "continue": "Toa so",
+  "already_have_account": "Wowɔ account dada?",
+  "login": "Kɔ mu",
+  "enter_email": "Fa w'email no hyɛ",
+  "enter_password": "Fa wo password no hyɛ",
+
+  "forgot_password": "Wopɛ sɛ wopaw wo password a?",
+  "reset_password": "Sesa wo password",
+  
+  "no_account": "Wonnya account?",
+  "signup": "Kyerɛw wo din",
+  "empty_fields": "Hyɛ email ne password no mu",
+  "wrong_credentials": "Nsɛm no nyɛ nokware"
+}

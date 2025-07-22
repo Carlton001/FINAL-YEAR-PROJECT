@@ -1,0 +1,14 @@
+{
+  "create_account": "Create Your Free Account",
+  "continue": "Continue",
+  "already_have_account": "Already have an account?",
+    "forgot_password": "Forgot your password?",
+      "enter_email": "Enter your Email",
+  "enter_password": "Enter your password",
+  "login": "Login",
+  "no_account": "Don't have an account?",
+  "signup": "SignUp",
+  "empty_fields": "Please enter both email and password",
+  "wrong_credentials": "Wrong Credentials"
+
+}
