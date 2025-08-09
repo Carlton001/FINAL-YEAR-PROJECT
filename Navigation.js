@@ -8,6 +8,7 @@ import Landing from './Screens/Landing';
 import Login from './Screens/Login';
 import SignUp from './Screens/SignUp';
 import Home from './Screens/Home';
+import UserServices from './Screens/UserServices'
 import PostService from './Screens/PostService';
 import Message from './Screens/Message';
 import Profile from './Screens/Profile';
@@ -67,6 +68,7 @@ const Navigation = () => {
         <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Workers" component={Workers} options={{ headerShown: false }} />
         <Stack.Screen name="ChatRoom" component={ChatRoom} options={{ headerShown: false }} />
+        <Stack.Screen name="UserServices" component={UserServices} />
       </Stack.Navigator>
     </NavigationContainer>
   );

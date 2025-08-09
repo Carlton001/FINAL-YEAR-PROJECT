@@ -135,13 +135,16 @@ const Home = ({ navigation }) => {
         style={styles.avatar}
       />
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{item.name || 'Sheeshes Glam'}</Text>
+        <Text style={styles.cardTitle}>{item.servicename || 'Sheeshes Glam'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="location-sharp" size={16} color="#fff" />
           <Text style={styles.cardLocation}>{item.location || 'Adenta'}</Text>
         </View>
+        <View style={styles.serviceTag}>
+         <Text style={styles.serviceText}>{item.service || 'Service'}</Text>
+        </View>
         <Text style={styles.cardDescription}>
-          {item.description || 'We offer makeup and nail services for any occasion'}
+          {item.about || 'We offer makeup and nail services for any occasion'}
         </Text>
       </View>
     </TouchableOpacity>
@@ -242,6 +245,23 @@ const styles = StyleSheet.create({
     padding: 10,
     zIndex: 99,
   },
+  serviceTag: {
+  alignSelf: 'flex-start',
+  backgroundColor: '#fff',
+  borderColor: '#005EB8',
+  borderWidth: 2,
+  borderRadius: 20, // Makes it circular-like
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  marginTop: 6,
+  marginBottom: 4,
+},
+serviceText: {
+  color: '#005EB8',
+  fontWeight: 'bold',
+  fontSize: 13,
+  textAlign: 'center',
+},
 });
 
 export default Home;
