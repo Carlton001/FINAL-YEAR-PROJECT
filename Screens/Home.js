@@ -1,4 +1,3 @@
-
 import {
   View,
   Text,
@@ -18,7 +17,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import { FIRESTORE_DB } from '../Firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+// 👆 added doc, getDoc, setDoc
 
 const Height = Dimensions.get('window').height;
 const Width = Dimensions.get('window').width;
@@ -42,26 +42,36 @@ const haversineDistance = (coords1, coords2) => {
   return earthRadius * c;
 };
 
+// helper to create deterministic chatId
+const generateChatId = (userId, providerId) => {
+  return [userId, providerId].sort().join('_');
+};
+
 const Home = ({ navigation }) => {
   const [providers, setProviders] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // TODO: replace with actual logged-in user id from Firebase Auth
+  const userId = "CURRENT_USER_ID";  
+
   const pan = useRef(new Animated.ValueXY({ x: Width - 70, y: Height - 170 })).current;
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: Animated.event(
-        [null, { dx: pan.x, dy: pan.y }],
-        { useNativeDriver: false }
-      ),
+      onPanResponderGrant: () => {
+        pan.setOffset({
+          x: pan.x._value,
+          y: pan.y._value,
+        });
+      },
+      onPanResponderMove: (e, gesture) => {
+        pan.setValue({ x: gesture.dx, y: gesture.dy });
+      },
       onPanResponderRelease: () => {
-        Animated.spring(pan, {
-          toValue: { x: pan.x._value, y: pan.y._value },
-          useNativeDriver: false,
-        }).start();
+        pan.flattenOffset();
       },
     })
   ).current;
@@ -71,6 +81,7 @@ const Home = ({ navigation }) => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.error('Permission to access location was denied');
+        setLoading(false);
         return;
       }
 
@@ -95,10 +106,12 @@ const Home = ({ navigation }) => {
           const sortedProviders = providersList
             .map(provider => ({
               ...provider,
-              distance: haversineDistance(userLocation, {
-                latitude: provider.latitude,
-                longitude: provider.longitude,
-              }),
+              distance: provider.latitude && provider.longitude
+                ? haversineDistance(userLocation, {
+                    latitude: provider.latitude,
+                    longitude: provider.longitude,
+                  })
+                : Infinity,
             }))
             .sort((a, b) => a.distance - b.distance);
 
@@ -114,40 +127,56 @@ const Home = ({ navigation }) => {
     fetchProviders();
   }, [userLocation]);
 
-  const handleProviderTap = (provider) => {
-    Alert.alert(
-      'Start Chat',
-      `Do you want to chat with ${provider.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Chat',
-          onPress: () => navigation.navigate('ChatRoom', { providerId: provider.id }),
-        },
-      ]
-    );
+  const handleProviderTap = async (provider) => {
+    const chatId = generateChatId(userId, provider.id);
+    const chatRef = doc(FIRESTORE_DB, "chats", chatId);
+
+    try {
+      const chatSnap = await getDoc(chatRef);
+
+      if (!chatSnap.exists()) {
+        await setDoc(chatRef, {
+          participants: [userId, provider.id],
+          lastMessage: "",
+          updatedAt: new Date(),
+        });
+      }
+
+      navigation.navigate("ChatRoom", { chatId, providerId: provider.id });
+    } catch (error) {
+      console.error("Error creating/fetching chat:", error);
+    }
   };
 
   const renderProviderCard = ({ item }) => (
     <TouchableOpacity onPress={() => handleProviderTap(item)} style={styles.card}>
       <Image
-        source={{ uri: item.image || 'https://via.placeholder.com/50' }}
+         source={{
+    uri: item.image || 'https://via.placeholder.com/50', // online fallback
+  }}
         style={styles.avatar}
       />
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{item.servicename || 'Sheeshes Glam'}</Text>
+        <Text style={styles.cardTitle}>{item.servicename || 'Service Provider'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="location-sharp" size={16} color="#fff" />
-          <Text style={styles.cardLocation}>{item.location || 'Adenta'}</Text>
+          <Text style={styles.cardLocation}>{item.location || 'Unknown'}</Text>
         </View>
         <View style={styles.serviceTag}>
-         <Text style={styles.serviceText}>{item.service || 'Service'}</Text>
+          <Text style={styles.serviceText}>{item.service || 'Service'}</Text>
         </View>
         <Text style={styles.cardDescription}>
-          {item.about || 'We offer makeup and nail services for any occasion'}
+          {item.about || 'No description available'}
         </Text>
       </View>
     </TouchableOpacity>
+  );
+
+  // Apply search filter
+  const filteredProviders = providers.filter((provider) =>
+    provider.servicename?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    provider.service?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    provider.location?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -164,9 +193,13 @@ const Home = ({ navigation }) => {
 
       {loading ? (
         <ActivityIndicator size="large" color="#005EB8" />
+      ) : filteredProviders.length === 0 ? (
+        <Text style={{ textAlign: 'center', marginTop: 20, color: 'gray' }}>
+          No providers found.
+        </Text>
       ) : (
         <FlatList
-          data={providers}
+          data={filteredProviders}
           keyExtractor={item => item.id}
           renderItem={renderProviderCard}
           contentContainerStyle={{ paddingBottom: 100 }}
@@ -176,7 +209,7 @@ const Home = ({ navigation }) => {
       {/* Floating Movable Support Button */}
       <Animated.View
         {...panResponder.panHandlers}
-        style={[styles.supportBtn, pan.getLayout()]}
+        style={[styles.supportBtn, { transform: pan.getTranslateTransform() }]}
       >
         <TouchableOpacity onPress={() => Alert.alert("Support", "Contact support here")}>
           <Ionicons name="help-circle" size={30} color="#fff" />
@@ -246,22 +279,21 @@ const styles = StyleSheet.create({
     zIndex: 99,
   },
   serviceTag: {
-  alignSelf: 'flex-start',
-  backgroundColor: '#fff',
-  borderColor: '#005EB8',
-  borderWidth: 2,
-  borderRadius: 20, // Makes it circular-like
-  paddingHorizontal: 12,
-  paddingVertical: 6,
-  marginTop: 6,
-  marginBottom: 4,
-},
-serviceText: {
-  color: '#005EB8',
-  fontWeight: 'bold',
-  fontSize: 13,
-  textAlign: 'center',
-},
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    borderColor: '#005EB8',
+    borderWidth: 2,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  serviceText: {
+    color: '#005EB8',
+    fontWeight: 'bold',
+    fontSize: 13,
+    textAlign: 'center',
+  },
 });
-
 export default Home;

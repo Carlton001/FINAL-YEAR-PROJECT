@@ -1,21 +1,45 @@
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useNavigation } from '@react-navigation/native';
-import { getAuth, signOut } from 'firebase/auth'; // ✅ Import signOut
+import { getAuth, signOut } from 'firebase/auth'; 
+import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 
 const Width = Dimensions.get('window').width;
 const Height = Dimensions.get('window').height;
+const db = getFirestore();
 
 const Profile = () => {
   const navigation = useNavigation();
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
+  const [fullName, setFullName] = useState(currentUser?.displayName || "Your Name");
+
+  useEffect(() => {
+    // ✅ Fetch user data from Firestore in case displayName is missing
+    const fetchUserData = async () => {
+      if (currentUser?.uid) {
+        try {
+          const q = query(collection(db, "users"), where("uid", "==", currentUser.uid));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setFullName(`${userData.firstName} ${userData.lastName}`);
+          }
+        } catch (error) {
+          console.error("Error fetching user data: ", error);
+        }
+      }
+    };
+
+    fetchUserData();
+  }, [currentUser]);
+
   const handleLogout = async () => {
     try {
-      await signOut(auth); // ✅ Sign out the user
-      navigation.replace('Login'); // ✅ Navigate to Login screen
+      await signOut(auth);
+      navigation.replace('Login');
     } catch (error) {
       console.error("Error logging out: ", error);
     }
@@ -39,7 +63,7 @@ const Profile = () => {
       {/* Profile picture and name */}
       <View style={styles.profileContainer}>
         <View style={styles.profileImage} />
-        <Text style={styles.name}>{currentUser?.displayName || "Your Name"}</Text>
+        <Text style={styles.name}>{fullName}</Text>
         <Text style={styles.role}>Barber</Text>
       </View>
 

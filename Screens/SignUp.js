@@ -12,7 +12,7 @@ import {
 import React, { useState } from 'react';
 import CheckBox from 'react-native-check-box';
 import { FIREBASE_AUTH } from '../Firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
@@ -23,7 +23,8 @@ const Height = Dimensions.get('window').height;
 const SignUp = () => {
   const navigation = useNavigation();
   const [isChecked, setIsChecked] = useState(false);
-  const [name, setName] = useState(''); 
+  const [firstName, setFirstName] = useState(''); 
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState(''); 
   const [number, setNumber] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +32,7 @@ const SignUp = () => {
   const auth = FIREBASE_AUTH;
 
   const handleSignUp = async () => {
-    if (!name || !number || !password || !email) {
+    if (!firstName || !lastName || !number || !password || !email) {
       Alert.alert('Missing Fields', 'Please fill in all fields.');
       return;
     }
@@ -44,7 +45,13 @@ const SignUp = () => {
     try {
       const response = await createUserWithEmailAndPassword(auth, email, password);
 
-      await addUserToFirestore(auth.currentUser.uid, name, email, number);
+      // ✅ Update Firebase auth profile with displayName
+      await updateProfile(auth.currentUser, {
+        displayName: `${firstName} ${lastName}`
+      });
+
+      // ✅ Save user in Firestore
+      await addUserToFirestore(auth.currentUser.uid, firstName, lastName, email, number);
 
       Alert.alert(
         "Success 🎉",
@@ -52,7 +59,7 @@ const SignUp = () => {
         [
           {
             text: "OK",
-            onPress: () => navigation.navigate('Login') // ✅ Go back to Login screen after success
+            onPress: () => navigation.navigate('Login')
           }
         ]
       );
@@ -70,11 +77,12 @@ const SignUp = () => {
     }
   };
 
-  const addUserToFirestore = async (uid, name, email, number) => {
+  const addUserToFirestore = async (uid, firstName, lastName, email, number) => {
     try {
       const docRef = await addDoc(collection(db, 'users'), {
         uid,
-        name,
+        firstName,
+        lastName,
         email,
         number
       });
@@ -101,7 +109,8 @@ const SignUp = () => {
 
       <Text style={styles.Top}>Complete your free account setup</Text>
       <View style={styles.form}>
-        <TextInput placeholder='First Name' placeholderTextColor="#a3a19b" value={name} onChangeText={setName} style={styles.input}/>
+        <TextInput placeholder='First Name' placeholderTextColor="#a3a19b" value={firstName} onChangeText={setFirstName} style={styles.input}/>
+        <TextInput placeholder='Last Name' placeholderTextColor="#a3a19b" value={lastName} onChangeText={setLastName} style={styles.input}/>
         <TextInput placeholder='Email' placeholderTextColor="#a3a19b" value={email} onChangeText={setEmail} style={styles.input}/>
         <TextInput placeholder='Phone Number' placeholderTextColor="#a3a19b" value={number} onChangeText={setNumber} style={styles.input}/>
         <TextInput placeholder='Create a Password' secureTextEntry={true} placeholderTextColor="#a3a19b" value={password} onChangeText={setPassword} style={styles.input}/>
@@ -146,7 +155,7 @@ const styles = StyleSheet.create({
     borderColor: '#005EB8',
     borderWidth: 1,
     padding: 13,
-    marginTop: Height * 0.04,
+    marginTop: Height * 0.025,
     borderRadius: 5
   },
   form: {
@@ -172,7 +181,7 @@ const styles = StyleSheet.create({
   },
   policy: {
     borderWidth: 1,
-    height: Height * 0.12,
+    minHeight: Height * 0.12,
     width: Width * 0.8,
     alignItems: 'center',
     justifyContent: 'center',
