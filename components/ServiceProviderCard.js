@@ -1,49 +1,37 @@
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import React, { useState } from 'react';
-import Ionicons from 'react-native-vector-icons/Ionicons'; // Import Ionicons for location icon
-import ChatModal from './ChatModal';
+import React from 'react';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const Height = Dimensions.get('window').height;
 const Width = Dimensions.get('window').width;
 
 const ServiceProviderCard = ({ provider, navigation }) => {
-  const [isModalVisible, setModalVisible] = useState(false);
+  const handleOpenChat = () => {
+    if (!provider.postedById) {
+      console.warn("⚠️ Provider UID missing");
+      return;
+    }
 
-  const openModal = () => {
-    setModalVisible(true);
-  };
-
-  const closeModal = () => {
-    setModalVisible(false);
-  };
-
-  const handlePress = () => {
-    navigation.navigate('ChatRoom', { providerId: provider.id }); // Navigate to ChatRoom
+    navigation.navigate("ChatRoom", { providerId: provider.postedById });
   };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress}>
+    <TouchableOpacity style={styles.card} onPress={handleOpenChat}>
       <View style={styles.inner1}>
-        <Text style={styles.distance}>{provider.distance.toFixed(2)} km away</Text>
-        <Text style={styles.name}>{provider.name}</Text>
+        {provider.distance && (
+          <Text style={styles.distance}>{provider.distance.toFixed(2)} km away</Text>
+        )}
+        <Text style={styles.name}>{provider.servicename}</Text>
       </View>
       <View style={styles.inner2}>
         <View style={styles.bg}>
-          <Ionicons name='location' color='#179139' size={17} />
+          <Ionicons name="location" color="#179139" size={17} />
           <Text style={styles.location}>{provider.location}</Text>
         </View>
         <View style={styles.bg}>
           <Text style={styles.service}>{provider.service}</Text>
         </View>
       </View>
-
-      {/* Chat Modal */}
-      <ChatModal
-        visible={isModalVisible}
-        onClose={closeModal}
-        navigation={navigation}
-        provider={provider}  // Pass provider details
-      />
     </TouchableOpacity>
   );
 };
@@ -51,7 +39,7 @@ const ServiceProviderCard = ({ provider, navigation }) => {
 const styles = StyleSheet.create({
   card: {
     width: Width * 0.85,
-    backgroundColor: '#179139', // Card background color
+    backgroundColor: '#179139',
     alignSelf: 'center',
     padding: 20,
     borderRadius: 16,
@@ -65,11 +53,12 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   distance: {
-    color: '#fff', // Distance text color
+    color: '#fff',
   },
   name: {
-    color: '#fff', // Service provider name color
-    fontSize: 25, // Increased font size for name
+    color: '#fff',
+    fontSize: 25,
+    flexShrink: 1,
   },
   inner2: {
     flexDirection: 'row',
@@ -77,15 +66,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   location: {
-    color: '#000', // Location text color
+    color: '#000',
     padding: 7,
   },
   service: {
-    color: '#000', // Service text color
+    color: '#000',
     padding: 7,
   },
   bg: {
-    backgroundColor: '#fff', // Background for the location and service
+    backgroundColor: '#fff',
     borderRadius: 5,
     alignItems: 'center',
     flexDirection: 'row',

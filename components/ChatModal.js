@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, Button, StyleSheet, ActivityIndicator } from 'react-native';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
 import { FIREBASE_AUTH, FIRESTORE_DB } from '../Firebase';
 
 const ChatModal = ({ visible, onClose, navigation, provider }) => {
@@ -11,7 +10,6 @@ const ChatModal = ({ visible, onClose, navigation, provider }) => {
     setLoading(true);
 
     try {
-      // get logged in user
       const user = FIREBASE_AUTH.currentUser;
       if (!user) {
         console.error("User not logged in");
@@ -19,29 +17,36 @@ const ChatModal = ({ visible, onClose, navigation, provider }) => {
         return;
       }
 
-      // make a unique chat id (user1_user2) sorted to avoid duplicates
+      // ✅ provider must have `postedById`
+      if (!provider?.postedById) {
+        console.error("Provider is missing postedById");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ generate unique chatId based on UIDs
       const chatId =
-        user.uid < provider.id
-          ? `${user.uid}_${provider.id}`
-          : `${provider.id}_${user.uid}`;
+        user.uid < provider.postedById
+          ? `${user.uid}_${provider.postedById}`
+          : `${provider.postedById}_${user.uid}`;
 
       const chatRef = doc(FIRESTORE_DB, "chats", chatId);
       const chatSnap = await getDoc(chatRef);
 
       if (!chatSnap.exists()) {
-        // create the chat if it doesn't exist
+        // ✅ create new chat if it doesn’t exist
         await setDoc(chatRef, {
-          participants: [user.uid, provider.id],
+          participants: [user.uid, provider.postedById],
           lastMessage: "",
           updatedAt: serverTimestamp(),
         });
       }
 
-      // navigate to ChatRoom with chatId
+      // ✅ navigate to chat room
       navigation.navigate("ChatRoom", { chatId, provider });
       onClose();
     } catch (error) {
-      console.error("Error starting chat:", error);
+      console.error("❌ Error starting chat:", error);
     } finally {
       setLoading(false);
     }
@@ -50,14 +55,14 @@ const ChatModal = ({ visible, onClose, navigation, provider }) => {
   return (
     <Modal
       visible={visible}
-      transparent={true}
+      transparent
       animationType="slide"
       onRequestClose={onClose}
     >
       <View style={styles.modalBackground}>
         <View style={styles.modalContainer}>
           <Text style={{ marginBottom: 10 }}>
-            Chat with {provider?.name || "Provider"}
+            Chat with {provider?.servicename || "Provider"}
           </Text>
           {loading ? (
             <ActivityIndicator size="small" color="blue" />
@@ -90,4 +95,3 @@ const styles = StyleSheet.create({
 });
 
 export default ChatModal;
-

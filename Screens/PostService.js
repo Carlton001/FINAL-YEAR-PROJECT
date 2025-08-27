@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Alert, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { FIRESTORE_DB, FIREBASE_STORAGE } from '../Firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Picker } from '@react-native-picker/picker';
 import { getAuth } from 'firebase/auth';
@@ -19,33 +19,51 @@ const PostService = ({ navigation }) => {
   const [about, setAbout] = useState('');
   const [image, setImage] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [hasService, setHasService] = useState(false);
 
-  // PICK IMAGE
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+
+  // ✅ Check if user already has a service using UID (not email)
+  useEffect(() => {
+    const checkUserService = async () => {
+      if (!currentUser) return;
+      try {
+        const providersRef = collection(FIRESTORE_DB, 'providers');
+        const q = query(providersRef, where('postedById', '==', currentUser.uid));
+        const snap = await getDocs(q);
+        if (!snap.empty) setHasService(true);
+      } catch (err) {
+        console.error("Error checking user service:", err);
+      }
+    };
+    checkUserService();
+  }, [currentUser]);
+
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'We need access to your photo library to upload images.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1,
     });
-
     if (!result.canceled && result.assets?.length > 0) {
       setImage(result.assets[0].uri);
     }
   };
 
-  // HANDLE SUBMIT
   const handlePostService = async () => {
-    const auth = getAuth();
-    const currentUser = auth.currentUser;
-
     if (!currentUser) {
       Alert.alert('Error', 'You must be logged in to post a service.');
+      return;
+    }
+
+    if (hasService) {
+      Alert.alert('Error', 'You have already posted a service. Only one service per user is allowed.');
       return;
     }
 
@@ -55,18 +73,16 @@ const PostService = ({ navigation }) => {
     }
 
     setUploading(true);
-
     try {
-      // Upload image to Firebase Storage
+      // ✅ Upload image
       const response = await fetch(image);
       const blob = await response.blob();
       const imagePath = `service_images/${Date.now()}.jpg`;
       const imageRef = ref(FIREBASE_STORAGE, imagePath);
-
       await uploadBytes(imageRef, blob);
       const downloadURL = await getDownloadURL(imageRef);
 
-      // Save data to Firestore
+      // ✅ Save with UID for chat linking
       await addDoc(collection(FIRESTORE_DB, 'providers'), {
         servicename,
         service: category,
@@ -77,8 +93,9 @@ const PostService = ({ navigation }) => {
         about,
         image: downloadURL,
         imagePath,
-        postedByEmail: currentUser.email, // ✅ store email instead of username
-        postedAt: new Date() // ✅ timestamp
+        postedById: currentUser.uid,   // 🔑 provider’s UID
+        postedByEmail: currentUser.email,
+        postedAt: new Date(),
       });
 
       Alert.alert('Success', 'Service posted successfully');
@@ -90,6 +107,17 @@ const PostService = ({ navigation }) => {
       setUploading(false);
     }
   };
+
+  if (hasService) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.emptyText}>You have already posted a service.</Text>
+        <TouchableOpacity style={styles.postButton} onPress={() => navigation.navigate('Home')}>
+          <Text style={styles.postButtonText}>Go Home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -134,72 +162,18 @@ const PostService = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: Width * 0.1,
-    paddingTop: Height * 0.03,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 20,
-  },
-  input: {
-    borderColor: '#ccc',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 8,
-    color: 'black',
-  },
-  textArea: {
-    height: 100,
-  },
-  pickerContainer: {
-    borderColor: '#ccc',
-    borderWidth: 1,
-    borderRadius: 8,
-    marginTop: 8,
-    height: 150,
-    justifyContent: 'center',
-  },
-  picker: {
-    width: '100%',
-    height: '100%',
-  },
-  imagePicker: {
-    marginTop: 10,
-    backgroundColor: '#e0f0ff',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  previewImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 10,
-    marginTop: 10,
-    alignSelf: 'center',
-  },
-  postButton: {
-    backgroundColor: '#005EB8',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  postButtonText: {
-    color: '#fff',
-    fontSize: 18,
-  },
+  container: { flexGrow: 1, paddingHorizontal: Width * 0.1, paddingTop: Height * 0.03, backgroundColor: '#fff' },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginVertical: 10 },
+  label: { fontSize: 16, fontWeight: '500', marginTop: 20 },
+  input: { borderColor: '#ccc', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginTop: 8, color: 'black' },
+  textArea: { height: 100 },
+  pickerContainer: { borderColor: '#ccc', borderWidth: 1, borderRadius: 8, marginTop: 8, height: 150, justifyContent: 'center' },
+  picker: { width: '100%', height: '100%' },
+  imagePicker: { marginTop: 10, backgroundColor: '#e0f0ff', padding: 10, borderRadius: 8, alignItems: 'center' },
+  previewImage: { width: 100, height: 100, borderRadius: 10, marginTop: 10, alignSelf: 'center' },
+  postButton: { backgroundColor: '#005EB8', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
+  postButtonText: { color: '#fff', fontSize: 18 },
+  emptyText: { textAlign: 'center', color: '#888', marginTop: 30, fontSize: 16 },
 });
 
 export default PostService;

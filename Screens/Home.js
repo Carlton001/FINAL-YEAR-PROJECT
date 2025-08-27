@@ -1,3 +1,4 @@
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,16 +10,15 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
-  PanResponder,
   Animated,
-  Image
+  Image,
+  RefreshControl,
 } from 'react-native';
-import React, { useEffect, useState, useRef } from 'react';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as Location from 'expo-location';
-import { FIRESTORE_DB } from '../Firebase';
-import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
-// 👆 added doc, getDoc, setDoc
+import { FIRESTORE_DB, FIREBASE_AUTH } from '../Firebase';
+import { collection, onSnapshot, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 const Height = Dimensions.get('window').height;
 const Width = Dimensions.get('window').width;
@@ -27,135 +27,153 @@ const Width = Dimensions.get('window').width;
 const haversineDistance = (coords1, coords2) => {
   const toRadians = (deg) => deg * (Math.PI / 180);
   const earthRadius = 6371;
-
   const dLat = toRadians(coords2.latitude - coords1.latitude);
   const dLon = toRadians(coords2.longitude - coords1.longitude);
-
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(coords1.latitude)) *
       Math.cos(toRadians(coords2.latitude)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadius * c;
 };
 
-// helper to create deterministic chatId
-const generateChatId = (userId, providerId) => {
-  return [userId, providerId].sort().join('_');
-};
+// Generate deterministic chatId from two UIDs
+const generateChatId = (uid1, uid2) => [uid1, uid2].sort().join('_');
 
 const Home = ({ navigation }) => {
-  const [providers, setProviders] = useState([]);
+  const [user, setUser] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // TODO: replace with actual logged-in user id from Firebase Auth
-  const userId = "CURRENT_USER_ID";  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const pan = useRef(new Animated.ValueXY({ x: Width - 70, y: Height - 170 })).current;
+  const auth = getAuth();
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        pan.setOffset({
-          x: pan.x._value,
-          y: pan.y._value,
-        });
-      },
-      onPanResponderMove: (e, gesture) => {
-        pan.setValue({ x: gesture.dx, y: gesture.dy });
-      },
-      onPanResponderRelease: () => {
-        pan.flattenOffset();
-      },
-    })
-  ).current;
-
+  // Auth listener
   useEffect(() => {
-    const getUserLocation = async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser || null);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Get user location
+  useEffect(() => {
+    const fetchLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        console.error('Permission to access location was denied');
+        console.error('Location permission denied');
         setLoading(false);
         return;
       }
-
-      let location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
-      setUserLocation({ latitude, longitude });
+      const { coords } = await Location.getCurrentPositionAsync({});
+      setUserLocation({ latitude: coords.latitude, longitude: coords.longitude });
     };
-
-    getUserLocation();
+    fetchLocation();
   }, []);
 
+  // Fetch providers
   useEffect(() => {
-    const fetchProviders = async () => {
-      if (userLocation) {
-        try {
-          const snapshot = await getDocs(collection(FIRESTORE_DB, 'providers'));
-          const providersList = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
+    if (!user || !userLocation) return;
 
-          const sortedProviders = providersList
-            .map(provider => ({
-              ...provider,
-              distance: provider.latitude && provider.longitude
+    setLoading(true);
+    const providersRef = collection(FIRESTORE_DB, 'providers');
+    const unsub = onSnapshot(
+      providersRef,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const sorted = list
+          .map((p) => ({
+            ...p,
+            distance:
+              p.latitude && p.longitude
                 ? haversineDistance(userLocation, {
-                    latitude: provider.latitude,
-                    longitude: provider.longitude,
+                    latitude: p.latitude,
+                    longitude: p.longitude,
                   })
                 : Infinity,
-            }))
-            .sort((a, b) => a.distance - b.distance);
-
-          setProviders(sortedProviders);
-        } catch (error) {
-          console.error('Error fetching providers:', error);
-        } finally {
-          setLoading(false);
-        }
+          }))
+          .sort((a, b) => a.distance - b.distance);
+        setProviders(sorted);
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (err) => {
+        console.error('Error fetching providers:', err);
+        setLoading(false);
+        setRefreshing(false);
       }
-    };
+    );
+    return unsub;
+  }, [user, userLocation]);
 
-    fetchProviders();
-  }, [userLocation]);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  };
 
+  // Create or get chat
   const handleProviderTap = async (provider) => {
-    const chatId = generateChatId(userId, provider.id);
-    const chatRef = doc(FIRESTORE_DB, "chats", chatId);
+    if (!user) {
+      Alert.alert('Login required', 'Please sign in to chat with providers.');
+      return;
+    }
+    if (!provider?.postedById) {
+      Alert.alert(
+        'Provider not linked',
+        'This provider is missing their user UID (postedById). Ask them to re-post their service.'
+      );
+      return;
+    }
+
+    const otherUid = provider.postedById;
+    const chatId = generateChatId(user.uid, otherUid);
+    const chatRef = doc(FIRESTORE_DB, 'chats', chatId);
 
     try {
-      const chatSnap = await getDoc(chatRef);
+      const snap = await getDoc(chatRef);
 
-      if (!chatSnap.exists()) {
-        await setDoc(chatRef, {
-          participants: [userId, provider.id],
-          lastMessage: "",
-          updatedAt: new Date(),
-        });
+      if (!snap.exists()) {
+        // Fetch provider displayName from users collection
+        let providerName = provider.servicename || provider.name || 'Provider';
+        try {
+          const providerDoc = await getDoc(doc(FIRESTORE_DB, 'users', otherUid));
+          if (providerDoc.exists()) {
+            const data = providerDoc.data();
+            providerName = `${data.firstName} ${data.lastName}`;
+          }
+        } catch (err) {
+          console.log('Provider user fetch failed, using service name');
+        }
+
+        const chatData = {
+          participants: [user.uid, otherUid],
+          lastMessage: '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          meta: {
+            [user.uid]: { displayName: user.displayName || user.email || 'You' },
+            [otherUid]: { displayName: providerName },
+          },
+        };
+
+        await setDoc(chatRef, chatData);
+        console.log('Chat created:', chatId);
       }
 
-      navigation.navigate("ChatRoom", { chatId, providerId: provider.id });
-    } catch (error) {
-      console.error("Error creating/fetching chat:", error);
+      navigation.navigate('ChatRoom', { chatId, provider });
+    } catch (e) {
+      console.error('Error creating chat:', e);
+      Alert.alert('Error', 'Unable to start chat. Please try again.');
     }
   };
 
   const renderProviderCard = ({ item }) => (
-    <TouchableOpacity onPress={() => handleProviderTap(item)} style={styles.card}>
-      <Image
-         source={{
-    uri: item.image || 'https://via.placeholder.com/50', // online fallback
-  }}
-        style={styles.avatar}
-      />
+    <TouchableOpacity style={styles.card} onPress={() => handleProviderTap(item)}>
+      <Image source={{ uri: item.image || 'https://via.placeholder.com/50' }} style={styles.avatar} />
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{item.servicename || 'Service Provider'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -165,28 +183,25 @@ const Home = ({ navigation }) => {
         <View style={styles.serviceTag}>
           <Text style={styles.serviceText}>{item.service || 'Service'}</Text>
         </View>
-        <Text style={styles.cardDescription}>
-          {item.about || 'No description available'}
-        </Text>
+        <Text style={styles.cardDescription}>{item.about || 'No description available'}</Text>
       </View>
     </TouchableOpacity>
   );
 
-  // Apply search filter
-  const filteredProviders = providers.filter((provider) =>
-    provider.servicename?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    provider.service?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    provider.location?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProviders = providers.filter(
+    (p) =>
+      p.servicename?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.service?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.location?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-
       <TextInput
         style={styles.search}
         placeholder="Search for Services"
-        placeholderTextColor={'gray'}
+        placeholderTextColor="gray"
         value={searchQuery}
         onChangeText={setSearchQuery}
       />
@@ -194,24 +209,19 @@ const Home = ({ navigation }) => {
       {loading ? (
         <ActivityIndicator size="large" color="#005EB8" />
       ) : filteredProviders.length === 0 ? (
-        <Text style={{ textAlign: 'center', marginTop: 20, color: 'gray' }}>
-          No providers found.
-        </Text>
+        <Text style={styles.noProviders}>No providers found.</Text>
       ) : (
         <FlatList
           data={filteredProviders}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={renderProviderCard}
           contentContainerStyle={{ paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         />
       )}
 
-      {/* Floating Movable Support Button */}
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[styles.supportBtn, { transform: pan.getTranslateTransform() }]}
-      >
-        <TouchableOpacity onPress={() => Alert.alert("Support", "Contact support here")}>
+      <Animated.View style={[styles.supportBtn, { transform: pan.getTranslateTransform() }]}>
+        <TouchableOpacity onPress={() => Alert.alert('Support', 'Contact support here')}>
           <Ionicons name="help-circle" size={30} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
@@ -220,11 +230,7 @@ const Home = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: Height * 0.08,
-    backgroundColor: "#fff",
-  },
+  container: { flex: 1, paddingTop: Height * 0.08, backgroundColor: '#fff' },
   search: {
     borderColor: '#ccc',
     borderWidth: 1,
@@ -237,6 +243,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#f4f4f4',
   },
+  noProviders: { textAlign: 'center', marginTop: 20, color: 'gray' },
   card: {
     backgroundColor: '#005EB8',
     flexDirection: 'row',
@@ -248,36 +255,11 @@ const styles = StyleSheet.create({
     gap: 12,
     elevation: 2,
   },
-  cardTitle: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    color: '#fff',
-    marginBottom: 4,
-  },
-  cardLocation: {
-    color: '#fff',
-    marginLeft: 4,
-    fontSize: 14,
-  },
-  cardDescription: {
-    color: '#fff',
-    marginTop: 6,
-    fontSize: 13,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#ddd',
-    marginRight: 10,
-  },
-  supportBtn: {
-    position: 'absolute',
-    backgroundColor: '#005EB8',
-    borderRadius: 30,
-    padding: 10,
-    zIndex: 99,
-  },
+  cardTitle: { fontWeight: 'bold', fontSize: 16, color: '#fff', marginBottom: 4 },
+  cardLocation: { color: '#fff', marginLeft: 4, fontSize: 14 },
+  cardDescription: { color: '#fff', marginTop: 6, fontSize: 13 },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#ddd', marginRight: 10 },
+  supportBtn: { position: 'absolute', bottom: 20, right: 20, backgroundColor: '#005EB8', borderRadius: 30, padding: 10, zIndex: 99 },
   serviceTag: {
     alignSelf: 'flex-start',
     backgroundColor: '#fff',
@@ -289,11 +271,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 4,
   },
-  serviceText: {
-    color: '#005EB8',
-    fontWeight: 'bold',
-    fontSize: 13,
-    textAlign: 'center',
-  },
+  serviceText: { color: '#005EB8', fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
 });
+
 export default Home;

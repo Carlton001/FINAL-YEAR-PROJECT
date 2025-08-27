@@ -19,15 +19,16 @@ const UserServices = () => {
     }
 
     try {
+      // ✅ Now filter by postedById (UID) instead of email
       const q = query(
         collection(FIRESTORE_DB, 'providers'),
-        where('postedByEmail', '==', currentUser.email)
+        where('postedById', '==', currentUser.uid)
       );
       const querySnapshot = await getDocs(q);
 
       const servicesData = [];
-      querySnapshot.forEach((doc) => {
-        servicesData.push({ id: doc.id, ...doc.data() });
+      querySnapshot.forEach((docSnap) => {
+        servicesData.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       setServices(servicesData);
@@ -54,6 +55,7 @@ const UserServices = () => {
               console.log('Service deleted successfully');
             } catch (error) {
               console.error('Error deleting service:', error);
+              Alert.alert('Error', 'You are not allowed to delete this service.');
             }
           },
         },

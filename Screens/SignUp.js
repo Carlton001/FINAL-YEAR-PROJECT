@@ -11,12 +11,11 @@ import {
 } from 'react-native';
 import React, { useState } from 'react';
 import CheckBox from 'react-native-check-box';
-import { FIREBASE_AUTH } from '../Firebase';
+import { FIREBASE_AUTH, FIRESTORE_DB } from '../Firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
-const db = getFirestore();
 const Width = Dimensions.get('window').width;
 const Height = Dimensions.get('window').height;
 
@@ -44,14 +43,22 @@ const SignUp = () => {
 
     try {
       const response = await createUserWithEmailAndPassword(auth, email, password);
+      const user = response.user;
 
-      // ✅ Update Firebase auth profile with displayName
-      await updateProfile(auth.currentUser, {
-        displayName: `${firstName} ${lastName}`
+      // ✅ Update Firebase Auth display name
+      await updateProfile(user, {
+        displayName: `${firstName} ${lastName}`,
       });
 
-      // ✅ Save user in Firestore
-      await addUserToFirestore(auth.currentUser.uid, firstName, lastName, email, number);
+      // ✅ Create Firestore profile with UID
+      await setDoc(doc(FIRESTORE_DB, "users", user.uid), {
+        uid: user.uid,
+        firstName,
+        lastName,
+        email,
+        number,
+        createdAt: serverTimestamp(),  // auto server timestamp
+      });
 
       Alert.alert(
         "Success 🎉",
@@ -59,7 +66,7 @@ const SignUp = () => {
         [
           {
             text: "OK",
-            onPress: () => navigation.navigate('Login')
+            onPress: () => navigation.navigate('Login'),
           }
         ]
       );
@@ -77,29 +84,11 @@ const SignUp = () => {
     }
   };
 
-  const addUserToFirestore = async (uid, firstName, lastName, email, number) => {
-    try {
-      const docRef = await addDoc(collection(db, 'users'), {
-        uid,
-        firstName,
-        lastName,
-        email,
-        number
-      });
-      console.log('User added to Firestore successfully!');
-      return docRef;
-    } catch (error) {
-      console.error('Error adding user to Firestore: ', error);
-      throw error;
-    }
-  };
-
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {/* Back Button */}
       <TouchableOpacity 
         style={styles.backButton} 
         onPress={() => navigation.navigate('Login')}

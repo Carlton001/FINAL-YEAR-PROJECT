@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useNavigation } from '@react-navigation/native';
 import { getAuth, signOut } from 'firebase/auth'; 
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 const Width = Dimensions.get('window').width;
 const Height = Dimensions.get('window').height;
@@ -21,10 +21,10 @@ const Profile = () => {
     const fetchUserData = async () => {
       if (currentUser?.uid) {
         try {
-          const q = query(collection(db, "users"), where("uid", "==", currentUser.uid));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
+          const userDocRef = doc(db, "users", currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
             setFullName(`${userData.firstName} ${userData.lastName}`);
           }
         } catch (error) {
@@ -47,7 +47,6 @@ const Profile = () => {
 
   return (
     <View style={styles.container}>
-      
       {/* Header with back button */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -64,7 +63,7 @@ const Profile = () => {
       <View style={styles.profileContainer}>
         <View style={styles.profileImage} />
         <Text style={styles.name}>{fullName}</Text>
-        <Text style={styles.role}>Barber</Text>
+      
       </View>
 
       {/* Buttons */}
