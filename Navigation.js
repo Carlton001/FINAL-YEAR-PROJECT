@@ -4,16 +4,21 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialBottomTabNavigator } from '@react-navigation/material-bottom-tabs';
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+// Screens
 import Landing from './Screens/Landing';
 import Login from './Screens/Login';
 import SignUp from './Screens/SignUp';
 import Home from './Screens/Home';
-import UserServices from './Screens/UserServices'
+import UserServices from './Screens/UserServices';
 import PostService from './Screens/PostService';
 import Message from './Screens/Message';
 import Profile from './Screens/Profile';
 import Workers from './Screens/Workers';
-import ChatRoom from './Screens/ChatRoom'; // Importing ChatRoom
+import ChatRoom from './Screens/ChatRoom';
+import Support from './Screens/Support'; 
+import Payments from './Screens/Payments'; // 👈 NEW
 
 const Stack = createNativeStackNavigator();
 const Tab = createMaterialBottomTabNavigator();
@@ -21,7 +26,7 @@ const Tab = createMaterialBottomTabNavigator();
 const TabScreen = () => {
   return (
     <Tab.Navigator
-     activeColor="#005EB8"
+      activeColor="#005EB8"
       inactiveColor="#005EB8"
       barStyle={{ backgroundColor: '#fff' }}
       screenOptions={({ route }) => ({
@@ -44,7 +49,8 @@ const TabScreen = () => {
             </View>
           );
         },
-      })}>
+      })}
+    >
       <Tab.Screen name='Home' component={Home} options={{ headerShown: false }} />
       <Tab.Screen name='PostService' component={PostService} options={{ headerShown: false }} />
       <Tab.Screen name='Message' component={Message} options={{ headerShown: false }} />
@@ -55,22 +61,22 @@ const TabScreen = () => {
 
 const Navigation = () => {
   return (
-    <NavigationContainer>
-      <StatusBar />
-      <Stack.Navigator>
-        <Stack.Screen
-          name="Landing"
-          component={Landing}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
-        <Stack.Screen name="SignUp" component={SignUp} options={{ headerShown: false }} />
-        <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Workers" component={Workers} options={{ headerShown: false }} />
-        <Stack.Screen name="ChatRoom" component={ChatRoom} options={{ headerShown: false }} />
-        <Stack.Screen name="UserServices" component={UserServices} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <NavigationContainer>
+        <StatusBar />
+        <Stack.Navigator>
+          <Stack.Screen name="Landing" component={Landing} options={{ headerShown: false }} />
+          <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
+          <Stack.Screen name="SignUp" component={SignUp} options={{ headerShown: false }} />
+          <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Workers" component={Workers} options={{ headerShown: false }} />
+          <Stack.Screen name="ChatRoom" component={ChatRoom} options={{ headerShown: false }} />
+          <Stack.Screen name="UserServices" component={UserServices} />
+          <Stack.Screen name="Payments" component={Payments} />
+          <Stack.Screen name="Support" component={Support} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </GestureHandlerRootView>
   );
 };
 

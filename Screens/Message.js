@@ -6,11 +6,9 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
+  SafeAreaView, // 👈 Import SafeAreaView
 } from "react-native";
-import {
-  FIRESTORE_DB,
-  FIREBASE_AUTH
-} from "../Firebase";
+import { FIRESTORE_DB, FIREBASE_AUTH } from "../Firebase";
 import {
   collection,
   query,
@@ -19,7 +17,9 @@ import {
   doc,
   getDoc,
   setDoc,
+  getDocs,
   serverTimestamp,
+  updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -63,7 +63,33 @@ const MessageScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, [userId]);
 
-  // ✅ Open or create chat
+  // ✅ Fetch profile (unchanged)
+  const fetchUserProfile = async (uid) => {
+    try {
+      const userRef = doc(FIRESTORE_DB, "users", uid);
+      const userSnap = await getDoc(userRef);
+      let userData = {};
+      if (userSnap.exists()) {
+        userData = userSnap.data();
+      }
+
+      const providersRef = collection(FIRESTORE_DB, "providers");
+      const q = query(providersRef, where("postedById", "==", uid));
+      const providerSnap = await getDocs(q);
+
+      if (!providerSnap.empty) {
+        const providerData = providerSnap.docs[0].data();
+        userData.servicename = providerData.servicename;
+      }
+
+      return userData;
+    } catch (err) {
+      console.error("Error fetching user profile:", err);
+    }
+    return {};
+  };
+
+  // ✅ Open or create chat (unchanged)
   const openChat = async (item) => {
     if (!userId) return;
 
@@ -75,6 +101,17 @@ const MessageScreen = ({ navigation }) => {
 
     try {
       const snap = await getDoc(chatRef);
+      const otherProfile = await fetchUserProfile(otherId);
+
+      let displayName = "User";
+      if (otherProfile.firstName && otherProfile.lastName) {
+        displayName = `${otherProfile.firstName} ${otherProfile.lastName}`;
+        if (otherProfile.servicename) {
+          displayName += ` (${otherProfile.servicename})`;
+        }
+      } else if (otherProfile.servicename) {
+        displayName = otherProfile.servicename;
+      }
 
       if (!snap.exists()) {
         const chatData = {
@@ -83,38 +120,58 @@ const MessageScreen = ({ navigation }) => {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           meta: {
-            [userId]: { displayName: "You" },
+            [userId]: { displayName: "You", unreadCount: 0 },
             [otherId]: {
-              displayName: item.meta?.[otherId]?.displayName || "User",
-              avatar: item.meta?.[otherId]?.avatar || null,
+              displayName,
+              avatar: otherProfile.profileImage || null,
+              unreadCount: 0,
             },
           },
         };
         await setDoc(chatRef, chatData);
-        console.log("✅ Created missing chat:", chatId);
+      } else {
+        const existing = snap.data();
+        const updatedMeta = {
+          ...existing.meta,
+          [otherId]: {
+            displayName,
+            avatar: otherProfile.profileImage || null,
+            unreadCount: existing.meta?.[otherId]?.unreadCount || 0,
+          },
+        };
+        await setDoc(chatRef, { ...existing, meta: updatedMeta });
       }
 
-      // ✅ Navigate to ChatRoom with postedById included
+      // ✅ Reset unread count for current user
+      await updateDoc(chatRef, {
+        [`meta.${userId}.unreadCount`]: 0,
+      });
+
       navigation.navigate("ChatRoom", {
         chatId,
         participant: {
           uid: otherId,
-          displayName: item.meta?.[otherId]?.displayName || "User",
+          displayName,
           avatar:
-            item.meta?.[otherId]?.avatar || "https://via.placeholder.com/50",
+            otherProfile.profileImage || "https://via.placeholder.com/50",
         },
-        postedById: userId, // 🔑 FIX: Always send this
+        postedById: userId,
       });
     } catch (err) {
       console.error("❌ Error opening chat:", err);
     }
   };
 
+  // ✅ Render chat items (unchanged)
   const renderChatItem = ({ item }) => {
     if (!item.participants) return null;
 
     const otherId = item.participants.find((uid) => uid !== userId);
-    const other = item.meta?.[otherId] || { displayName: "User", avatar: null };
+    const other = item.meta?.[otherId] || {
+      displayName: "User",
+      avatar: null,
+    };
+    const unread = item.meta?.[userId]?.unreadCount || 0;
 
     return (
       <TouchableOpacity onPress={() => openChat(item)}>
@@ -131,6 +188,7 @@ const MessageScreen = ({ navigation }) => {
               {item.lastMessage || "No messages yet"}
             </Text>
           </View>
+          {unread > 0 && <View style={styles.unreadDot} />}
         </View>
       </TouchableOpacity>
     );
@@ -138,13 +196,15 @@ const MessageScreen = ({ navigation }) => {
 
   if (loading)
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.header}>Chats</Text>
         <Text style={styles.emptyText}>Loading chats...</Text>
-      </View>
+      </SafeAreaView>
     );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.header}>Chats</Text>
       {chats.length === 0 ? (
         <Text style={styles.emptyText}>No chats yet</Text>
       ) : (
@@ -154,12 +214,22 @@ const MessageScreen = ({ navigation }) => {
           renderItem={renderChatItem}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", marginTop: 70 },
+  container: { flex: 1, backgroundColor: "#fff" }, // 👈 Removed marginTop
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    textAlign: "center",
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
+    backgroundColor: "#1199ddff", // 👈 Example header color (green)
+    color: "white",
+  },
   messageCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -171,6 +241,13 @@ const styles = StyleSheet.create({
   name: { fontWeight: "bold", fontSize: 16 },
   lastMessage: { color: "#888", marginTop: 5, fontSize: 14 },
   emptyText: { textAlign: "center", color: "#888", marginTop: 30, fontSize: 16 },
+  unreadDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "green",
+    marginLeft: 10,
+  },
 });
 
 export default MessageScreen;

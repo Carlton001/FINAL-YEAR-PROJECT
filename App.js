@@ -5,7 +5,8 @@ import Login from './Screens/Login';
 import SignUp from './Screens/SignUp';
 import Landing from './Screens/Landing';
 import Navigation from './Navigation';
-
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 
 export default function App() {
   return (

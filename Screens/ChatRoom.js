@@ -1,3 +1,4 @@
+// ChatRoom.js
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -26,17 +27,96 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+
 const ChatRoom = ({ navigation, route }) => {
-  const { provider, chatId: routeChatId, participants: routeParticipants } = route.params || {};
+  const { provider, chatId: routeChatId } = route.params || {};
   const [chatId, setChatId] = useState(routeChatId || null);
-  const [participants, setParticipants] = useState(routeParticipants || []);
   const [user, setUser] = useState(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
+  const [otherPaymentMethod, setOtherPaymentMethod] = useState(null);
   const flatListRef = useRef(null);
 
-  // 1) Handle auth + ensure chat doc if creating a new one
+  // -----------------------------
+  // Zoom + Pan + Double-Tap setup
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
+
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      savedScale.value = scale.value;
+    })
+    .onUpdate((event) => {
+      let newScale = savedScale.value * event.scale;
+      newScale = Math.max(1, Math.min(newScale, 3));
+      scale.value = newScale;
+
+      focalX.value = event.focalX;
+      focalY.value = event.focalY;
+    })
+    .onEnd(() => {
+      if (scale.value < 1) {
+        scale.value = withTiming(1, { duration: 200 });
+      }
+    });
+
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      if (scale.value > 1) {
+        translateX.value = savedTranslateX.value + event.translationX;
+        translateY.value = savedTranslateY.value + event.translationY;
+      }
+    });
+
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      if (scale.value > 1) {
+        scale.value = withTiming(1, { duration: 200 });
+        translateX.value = withTiming(0, { duration: 200 });
+        translateY.value = withTiming(0, { duration: 200 });
+      } else {
+        scale.value = withTiming(2, { duration: 200 });
+      }
+    });
+
+  const composedGesture = Gesture.Simultaneous(
+    doubleTapGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { translateX: focalX.value },
+      { translateY: focalY.value },
+      { scale: scale.value },
+      { translateX: -focalX.value },
+      { translateY: -focalY.value },
+    ],
+  }));
+  // -----------------------------
+
+  // 🔑 Auth + Ensure Chat
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (authUser) => {
       if (!authUser) {
@@ -45,15 +125,12 @@ const ChatRoom = ({ navigation, route }) => {
       }
       setUser(authUser);
 
-      // Case A: chat already provided (from Messages list)
       if (routeChatId) {
         setChatId(routeChatId);
-        setParticipants(routeParticipants || []);
         setError(null);
         return;
       }
 
-      // Case B: opening from Provider profile (need provider.postedById)
       const otherUid = provider?.postedById;
       if (!otherUid) {
         setError('Invalid provider data (missing postedById).');
@@ -72,9 +149,6 @@ const ChatRoom = ({ navigation, route }) => {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-        } else {
-          // Load participants from existing doc
-          setParticipants(chatSnap.data()?.participants || [authUser.uid, otherUid]);
         }
 
         setChatId(derivedChatId);
@@ -88,7 +162,80 @@ const ChatRoom = ({ navigation, route }) => {
     return unsubscribe;
   }, [provider, routeChatId]);
 
-  // 2) Subscribe to messages once chatId is known
+  // ✅ Fetch OTHER user’s payment method (from users collection, after resolving participants from chat)
+  useEffect(() => {
+    if (!user || !chatId) return;
+
+    const fetchPaymentMethod = async () => {
+      try {
+        // Step 1: Load chat doc to get participants
+        const chatRef = doc(FIRESTORE_DB, 'chats', chatId);
+        const chatSnap = await getDoc(chatRef);
+
+        if (!chatSnap.exists()) {
+          console.log("⚠️ No chat doc for:", chatId);
+          return;
+        }
+
+        const chatData = chatSnap.data();
+        const participants = chatData?.participants || [];
+        console.log("👥 Participants from chat:", participants);
+
+        // Step 2: Pick other uid
+        const otherUid = participants.find((uid) => uid !== user.uid);
+        console.log("👉 Other UID:", otherUid);
+
+        if (!otherUid) return;
+
+        // Step 3: Get user doc
+        const otherRef = doc(FIRESTORE_DB, 'users', otherUid);
+        const otherSnap = await getDoc(otherRef);
+
+        if (!otherSnap.exists()) {
+          console.log("⚠️ No user doc for UID:", otherUid);
+          return;
+        }
+
+        const otherData = otherSnap.data();
+        console.log("📄 Other user data:", otherData);
+
+        // Step 4: Extract payment field
+        if (otherData.paymentMethod) {
+          setOtherPaymentMethod(otherData.paymentMethod);
+          console.log("✅ Found paymentMethod:", otherData.paymentMethod);
+        } else if (otherData.paymentDetails) {
+          setOtherPaymentMethod(otherData.paymentDetails);
+          console.log("✅ Found paymentDetails:", otherData.paymentDetails);
+        } else {
+          console.log("❌ No payment info field found in user doc");
+          setOtherPaymentMethod(null);
+        }
+      } catch (err) {
+        console.error("🔥 Error fetching other user payment method:", err);
+      }
+    };
+
+    fetchPaymentMethod();
+  }, [chatId, user]);
+
+  // Show OTHER user’s Payment Method
+  const handleShowPayment = () => {
+    if (!otherPaymentMethod) {
+      Alert.alert('No Payment Method', 'This user has not set up a payment method.');
+      return;
+    }
+
+    if (typeof otherPaymentMethod === 'object') {
+      Alert.alert(
+        'Payment Method',
+        `Network: ${otherPaymentMethod.network ?? "N/A"}\nName: ${otherPaymentMethod.name ?? "N/A"}\nNumber: ${otherPaymentMethod.number ?? "N/A"}`
+      );
+    } else {
+      Alert.alert('Payment Method', String(otherPaymentMethod));
+    }
+  };
+
+  // Subscribe to messages
   useEffect(() => {
     if (!chatId) return;
 
@@ -103,18 +250,16 @@ const ChatRoom = ({ navigation, route }) => {
       },
       (err) => {
         console.error('❌ Snapshot error:', err);
-        if (err.code === 'permission-denied') {
-          setError("You don't have access to this chat.");
-        } else {
-          setError('Something went wrong while loading messages.');
-        }
+        setError(err.code === 'permission-denied'
+          ? "You don't have access to this chat."
+          : 'Something went wrong while loading messages.'
+        );
       }
     );
 
     return unsubscribe;
   }, [chatId]);
 
-  // 3) Send message
   const handleSend = async () => {
     if (!message.trim() || !user || !chatId) return;
 
@@ -125,9 +270,26 @@ const ChatRoom = ({ navigation, route }) => {
         createdAt: serverTimestamp(),
       });
 
-      await updateDoc(doc(FIRESTORE_DB, 'chats', chatId), {
+      const chatRef = doc(FIRESTORE_DB, 'chats', chatId);
+      const chatSnap = await getDoc(chatRef);
+      if (!chatSnap.exists()) return;
+      const chatData = chatSnap.data();
+
+      const updatedMeta = { ...chatData.meta };
+      for (const uid of chatData.participants) {
+        if (uid !== user.uid) {
+          const oldCount = updatedMeta?.[uid]?.unreadCount || 0;
+          updatedMeta[uid] = {
+            ...updatedMeta[uid],
+            unreadCount: oldCount + 1,
+          };
+        }
+      }
+
+      await updateDoc(chatRef, {
         lastMessage: message,
         updatedAt: serverTimestamp(),
+        meta: updatedMeta,
       });
 
       setMessage('');
@@ -151,53 +313,69 @@ const ChatRoom = ({ navigation, route }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="black" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-      </View>
+      <GestureDetector gesture={composedGesture}>
+        <Animated.View style={[styles.innerContainer, animatedStyle]}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="black" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
 
-      {/* Chat messages */}
-      {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={{ padding: 10 }}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        />
-      )}
+            {/* Payment button */}
+            <TouchableOpacity onPress={handleShowPayment} style={styles.paymentButton}>
+              <Ionicons name="card-outline" size={24} color="black" />
+            </TouchableOpacity>
+          </View>
 
-      {/* Input */}
-      {!error && (
-        <View style={styles.inputArea}>
-          <TextInput
-            style={styles.input}
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Type your message"
-          />
-          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-            <Ionicons name="send" size={22} color="white" />
-          </TouchableOpacity>
-        </View>
-      )}
+          {/* Messages */}
+          {error ? (
+            <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              contentContainerStyle={{ padding: 10 }}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+              style={{ flex: 1 }}
+            />
+          )}
+
+          {/* Input */}
+          {!error && (
+            <View style={styles.inputArea}>
+              <TextInput
+                style={styles.input}
+                value={message}
+                onChangeText={setMessage}
+                placeholder="Type your message"
+              />
+              <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+                <Ionicons name="send" size={22} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
+      </GestureDetector>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 10, marginTop: 40 },
+  innerContainer: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginTop: 40,
+    justifyContent: 'space-between',
+  },
   backButton: { flexDirection: 'row', alignItems: 'center' },
   backText: { fontSize: 16, marginLeft: 5 },
+  paymentButton: { padding: 8 },
   errorBox: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: 'red', fontSize: 16 },
   msgBubble: { padding: 10, borderRadius: 10, marginVertical: 5, maxWidth: '75%' },
@@ -209,8 +387,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#ccc',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 5, marginRight: 10 },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
   sendButton: { backgroundColor: '#007AFF', padding: 10, borderRadius: 50 },
 });
 
