@@ -6,7 +6,9 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
-  SafeAreaView, // 👈 Import SafeAreaView
+  SafeAreaView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { FIRESTORE_DB, FIREBASE_AUTH } from "../Firebase";
 import {
@@ -20,6 +22,7 @@ import {
   getDocs,
   serverTimestamp,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -63,7 +66,30 @@ const MessageScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, [userId]);
 
-  // ✅ Fetch profile (unchanged)
+  // ✅ Delete chat with confirmation
+  const deleteChat = (chatId) => {
+    Alert.alert(
+      "Delete Chat",
+      "Are you sure you want to delete this chat?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(FIRESTORE_DB, "chats", chatId));
+              console.log("Chat deleted:", chatId);
+            } catch (err) {
+              console.error("❌ Error deleting chat:", err);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ✅ Fetch user profile
   const fetchUserProfile = async (uid) => {
     try {
       const userRef = doc(FIRESTORE_DB, "users", uid);
@@ -89,7 +115,7 @@ const MessageScreen = ({ navigation }) => {
     return {};
   };
 
-  // ✅ Open or create chat (unchanged)
+  // ✅ Open or create chat
   const openChat = async (item) => {
     if (!userId) return;
 
@@ -142,7 +168,6 @@ const MessageScreen = ({ navigation }) => {
         await setDoc(chatRef, { ...existing, meta: updatedMeta });
       }
 
-      // ✅ Reset unread count for current user
       await updateDoc(chatRef, {
         [`meta.${userId}.unreadCount`]: 0,
       });
@@ -162,7 +187,7 @@ const MessageScreen = ({ navigation }) => {
     }
   };
 
-  // ✅ Render chat items (unchanged)
+  // ✅ Render chat items
   const renderChatItem = ({ item }) => {
     if (!item.participants) return null;
 
@@ -174,33 +199,41 @@ const MessageScreen = ({ navigation }) => {
     const unread = item.meta?.[userId]?.unreadCount || 0;
 
     return (
-      <TouchableOpacity onPress={() => openChat(item)}>
-        <View style={styles.messageCard}>
+      <TouchableOpacity
+        onPress={() => openChat(item)}
+        onLongPress={() => deleteChat(item.id)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.chatCard}>
           <Image
             source={{
               uri: other.avatar || "https://via.placeholder.com/50",
             }}
             style={styles.avatar}
           />
-          <View style={{ flex: 1, marginLeft: 10 }}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.name}>{other.displayName}</Text>
-            <Text style={styles.lastMessage}>
+            <Text style={styles.lastMessage} numberOfLines={1}>
               {item.lastMessage || "No messages yet"}
             </Text>
           </View>
-          {unread > 0 && <View style={styles.unreadDot} />}
+          {unread > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{unread}</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
   };
 
-  if (loading)
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.header}>Chats</Text>
-        <Text style={styles.emptyText}>Loading chats...</Text>
+        <ActivityIndicator size="large" color="#1199dd" />
       </SafeAreaView>
     );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -212,6 +245,7 @@ const MessageScreen = ({ navigation }) => {
           data={chats}
           keyExtractor={(item) => item.id}
           renderItem={renderChatItem}
+          contentContainerStyle={{ padding: 10 }}
         />
       )}
     </SafeAreaView>
@@ -219,34 +253,51 @@ const MessageScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" }, // 👈 Removed marginTop
+  container: { flex: 1, backgroundColor: "#f9f9f9" },
   header: {
-    fontSize: 24,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "700",
     textAlign: "center",
     paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
-    backgroundColor: "#1199ddff", // 👈 Example header color (green)
+    backgroundColor: "#1199dd",
     color: "white",
+    elevation: 3,
   },
-  messageCard: {
+  chatCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
+    backgroundColor: "#fff",
+    padding: 12,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
   },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#ddd" },
-  name: { fontWeight: "bold", fontSize: 16 },
-  lastMessage: { color: "#888", marginTop: 5, fontSize: 14 },
-  emptyText: { textAlign: "center", color: "#888", marginTop: 30, fontSize: 16 },
-  unreadDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "green",
-    marginLeft: 10,
+  avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 12 },
+  name: { fontWeight: "600", fontSize: 16, color: "#222" },
+  lastMessage: { color: "#777", marginTop: 4, fontSize: 14 },
+  emptyText: {
+    textAlign: "center",
+    color: "#888",
+    marginTop: 40,
+    fontSize: 16,
+  },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#1199dd",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+  },
+  unreadText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 });
 

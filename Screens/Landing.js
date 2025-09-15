@@ -1,4 +1,3 @@
-
 import '../src/locales/i18n'; // This initializes i18n
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Image } from 'react-native'
 import React from 'react'
@@ -20,7 +19,7 @@ const Landing = () => {
     <View style={styles.container}>
       <Image style={styles.logo} source={require('../assests/logo.png')} />
       <Text style={styles.Top}>{t('create_account')}</Text>
-      <Image style={styles.logo1} source={require('../assests/img.png')} />
+      <Image style={styles.logo1} source={require('../assests/img2.png')} />
 
       <View style={styles.form}>
         <TouchableOpacity onPress={() => navigation.navigate('SignUp')} style={styles.button}>
@@ -41,6 +40,12 @@ const Landing = () => {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => changeLanguage('tw')}>
             <Text style={styles.langBtn}>Twi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => changeLanguage('ga')}>
+            <Text style={styles.langBtn}>Ga</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => changeLanguage('ew')}>
+            <Text style={styles.langBtn}>Ewe</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -92,18 +97,22 @@ const styles = StyleSheet.create({
     height: Height * 0.20
   },
   logo1: {
-    marginLeft: Width * -0.1
+    marginLeft: Width * -0.1,
+    marginBottom: -60,
+    marginTop: 50,
   },
   langSwitcher: {
     flexDirection: 'row',
     marginTop: 20,
-    gap: 10
+    flexWrap: 'wrap', // ✅ allows wrapping if too many buttons
+    justifyContent: 'center'
   },
   langBtn: {
     fontSize: 16,
     color: '#005EB8',
     fontWeight: '600',
-    marginHorizontal: 10
+    marginHorizontal: 10,
+    marginVertical: 5
   }
 })
 

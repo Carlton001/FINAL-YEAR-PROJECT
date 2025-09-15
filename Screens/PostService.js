@@ -7,6 +7,7 @@ import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Picker } from '@react-native-picker/picker';
 import { getAuth } from 'firebase/auth';
+import { useTranslation } from 'react-i18next'; // ✅ translation hook
 
 const { width: Width, height: Height } = Dimensions.get('window');
 
@@ -21,10 +22,11 @@ const PostService = ({ navigation }) => {
   const [uploading, setUploading] = useState(false);
   const [hasService, setHasService] = useState(false);
 
+  const { t } = useTranslation(); // ✅ translations
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
-  // ✅ Check if user already has a service using UID (not email)
+  // ✅ Check if user already has a service
   useEffect(() => {
     const checkUserService = async () => {
       if (!currentUser) return;
@@ -43,7 +45,7 @@ const PostService = ({ navigation }) => {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'We need access to your photo library to upload images.');
+      Alert.alert(t('permission_denied'), t('permission_message'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -58,23 +60,22 @@ const PostService = ({ navigation }) => {
 
   const handlePostService = async () => {
     if (!currentUser) {
-      Alert.alert('Error', 'You must be logged in to post a service.');
+      Alert.alert(t('error'), t('must_login'));
       return;
     }
 
     if (hasService) {
-      Alert.alert('Error', 'You have already posted a service. Only one service per user is allowed.');
+      Alert.alert(t('error'), t('already_posted'));
       return;
     }
 
     if (!category || !servicename || !location || !mobileNumber || !type || !about || !image) {
-      Alert.alert('Error', 'Please fill in all fields and select an image');
+      Alert.alert(t('error'), t('fill_all_fields'));
       return;
     }
 
     setUploading(true);
     try {
-      // ✅ Upload image
       const response = await fetch(image);
       const blob = await response.blob();
       const imagePath = `service_images/${Date.now()}.jpg`;
@@ -82,7 +83,6 @@ const PostService = ({ navigation }) => {
       await uploadBytes(imageRef, blob);
       const downloadURL = await getDownloadURL(imageRef);
 
-      // ✅ Save with UID for chat linking
       await addDoc(collection(FIRESTORE_DB, 'providers'), {
         servicename,
         service: category,
@@ -93,16 +93,16 @@ const PostService = ({ navigation }) => {
         about,
         image: downloadURL,
         imagePath,
-        postedById: currentUser.uid,   // 🔑 provider’s UID
+        postedById: currentUser.uid,
         postedByEmail: currentUser.email,
         postedAt: new Date(),
       });
 
-      Alert.alert('Success', 'Service posted successfully');
+      Alert.alert(t('success'), t('service_posted'));
       navigation.navigate('Home');
     } catch (error) {
       console.error('Error posting service: ', error);
-      Alert.alert('Error', 'Failed to post service. Please try again.');
+      Alert.alert(t('error'), t('post_failed'));
     } finally {
       setUploading(false);
     }
@@ -111,9 +111,9 @@ const PostService = ({ navigation }) => {
   if (hasService) {
     return (
       <View style={styles.container}>
-        <Text style={styles.emptyText}>You have already posted a service.</Text>
+        <Text style={styles.emptyText}>{t('already_posted')}</Text>
         <TouchableOpacity style={styles.postButton} onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.postButtonText}>Go Home</Text>
+          <Text style={styles.postButtonText}>{t('go_home')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -122,40 +122,40 @@ const PostService = ({ navigation }) => {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Ionicons name="arrow-back" size={30} color="green" style={{ marginTop: 30 }} onPress={() => navigation.goBack()} />
-      <Text style={styles.title}>Post Service</Text>
+      <Text style={styles.title}>{t('post_service')}</Text>
 
-      <Text style={styles.label}>Service</Text>
-      <TextInput style={styles.input} placeholder="Hairdresser" value={category} onChangeText={setCategory} placeholderTextColor="gray" />
+      <Text style={styles.label}>{t('service')}</Text>
+      <TextInput style={styles.input} placeholder={t('service_placeholder')} value={category} onChangeText={setCategory} placeholderTextColor="gray" />
 
-      <Text style={styles.label}>Service Name</Text>
-      <TextInput style={styles.input} placeholder="Sandra's Salon" value={servicename} onChangeText={setServiceName} placeholderTextColor="gray" />
+      <Text style={styles.label}>{t('service_name')}</Text>
+      <TextInput style={styles.input} placeholder={t('service_name_placeholder')} value={servicename} onChangeText={setServiceName} placeholderTextColor="gray" />
 
-      <Text style={styles.label}>Location</Text>
-      <TextInput style={styles.input} placeholder="North Legon" value={location} onChangeText={setLocation} placeholderTextColor="gray" />
+      <Text style={styles.label}>{t('location')}</Text>
+      <TextInput style={styles.input} placeholder={t('location_placeholder')} value={location} onChangeText={setLocation} placeholderTextColor="gray" />
 
-      <Text style={styles.label}>Mobile Number</Text>
-      <TextInput style={styles.input} placeholder="1234567890" value={mobileNumber} onChangeText={setMobileNumber} keyboardType="number-pad" placeholderTextColor="gray" />
+      <Text style={styles.label}>{t('mobile_number')}</Text>
+      <TextInput style={styles.input} placeholder={t('mobile_placeholder')} value={mobileNumber} onChangeText={setMobileNumber} keyboardType="number-pad" placeholderTextColor="gray" />
 
-      <Text style={styles.label}>Type</Text>
+      <Text style={styles.label}>{t('type')}</Text>
       <View style={styles.pickerContainer}>
         <Picker selectedValue={type} onValueChange={setType} dropdownIconColor="gray" style={styles.picker}>
-          <Picker.Item label="Select Type" value="" color="gray" />
-          <Picker.Item label="Full Time" value="Full Time" color="gray" />
-          <Picker.Item label="Part Time" value="Part Time" color="gray" />
+          <Picker.Item label={t('select_type')} value="" color="gray" />
+          <Picker.Item label={t('full_time')} value="Full Time" color="gray" />
+          <Picker.Item label={t('part_time')} value="Part Time" color="gray" />
         </Picker>
       </View>
 
-      <Text style={styles.label}>About Yourself</Text>
-      <TextInput style={[styles.input, styles.textArea]} placeholder="Describe your service..." value={about} onChangeText={setAbout} multiline placeholderTextColor="gray" />
+      <Text style={styles.label}>{t('about')}</Text>
+      <TextInput style={[styles.input, styles.textArea]} placeholder={t('about_placeholder')} value={about} onChangeText={setAbout} multiline placeholderTextColor="gray" />
 
-      <Text style={styles.label}>Profile Photo</Text>
+      <Text style={styles.label}>{t('profile_photo')}</Text>
       <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
-        <Text style={{ color: '#005EB8', fontWeight: 'bold' }}>{image ? 'Change Image' : 'Pick an Image'}</Text>
+        <Text style={{ color: '#005EB8', fontWeight: 'bold' }}>{image ? t('change_image') : t('pick_image')}</Text>
       </TouchableOpacity>
       {image && <Image source={{ uri: image }} style={styles.previewImage} />}
 
       <TouchableOpacity style={styles.postButton} onPress={handlePostService} disabled={uploading}>
-        {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.postButtonText}>Post</Text>}
+        {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.postButtonText}>{t('post')}</Text>}
       </TouchableOpacity>
     </ScrollView>
   );

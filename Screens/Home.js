@@ -16,14 +16,14 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as Location from 'expo-location';
-import { FIRESTORE_DB, FIREBASE_AUTH } from '../Firebase';
+import { FIRESTORE_DB } from '../Firebase';
 import { collection, onSnapshot, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { useTranslation } from 'react-i18next'; // ✅ added
 
 const Height = Dimensions.get('window').height;
 const Width = Dimensions.get('window').width;
 
-// Haversine formula
 const haversineDistance = (coords1, coords2) => {
   const toRadians = (deg) => deg * (Math.PI / 180);
   const earthRadius = 6371;
@@ -38,10 +38,10 @@ const haversineDistance = (coords1, coords2) => {
   return earthRadius * c;
 };
 
-// Generate deterministic chatId from two UIDs
 const generateChatId = (uid1, uid2) => [uid1, uid2].sort().join('_');
 
 const Home = ({ navigation }) => {
+  const { t } = useTranslation(); // ✅ hook
   const [user, setUser] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [providers, setProviders] = useState([]);
@@ -52,7 +52,6 @@ const Home = ({ navigation }) => {
   const pan = useRef(new Animated.ValueXY({ x: Width - 70, y: Height - 170 })).current;
   const auth = getAuth();
 
-  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser || null);
@@ -60,7 +59,6 @@ const Home = ({ navigation }) => {
     return unsubscribe;
   }, []);
 
-  // Get user location
   useEffect(() => {
     const fetchLocation = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -75,7 +73,6 @@ const Home = ({ navigation }) => {
     fetchLocation();
   }, []);
 
-  // Fetch providers
   useEffect(() => {
     if (!user || !userLocation) return;
 
@@ -115,17 +112,13 @@ const Home = ({ navigation }) => {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Create or get chat
   const handleProviderTap = async (provider) => {
     if (!user) {
-      Alert.alert('Login required', 'Please sign in to chat with providers.');
+      Alert.alert(t('login_required_title'), t('login_required_message'));
       return;
     }
     if (!provider?.postedById) {
-      Alert.alert(
-        'Provider not linked',
-        'This provider is missing their user UID (postedById). Ask them to re-post their service.'
-      );
+      Alert.alert(t('provider_not_linked_title'), t('provider_not_linked_message'));
       return;
     }
 
@@ -137,8 +130,7 @@ const Home = ({ navigation }) => {
       const snap = await getDoc(chatRef);
 
       if (!snap.exists()) {
-        // Fetch provider displayName from users collection
-        let providerName = provider.servicename || provider.name || 'Provider';
+        let providerName = provider.servicename || provider.name || t('provider_default');
         try {
           const providerDoc = await getDoc(doc(FIRESTORE_DB, 'users', otherUid));
           if (providerDoc.exists()) {
@@ -155,7 +147,7 @@ const Home = ({ navigation }) => {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           meta: {
-            [user.uid]: { displayName: user.displayName || user.email || 'You' },
+            [user.uid]: { displayName: user.displayName || user.email || t('you') },
             [otherUid]: { displayName: providerName },
           },
         };
@@ -167,7 +159,7 @@ const Home = ({ navigation }) => {
       navigation.navigate('ChatRoom', { chatId, provider });
     } catch (e) {
       console.error('Error creating chat:', e);
-      Alert.alert('Error', 'Unable to start chat. Please try again.');
+      Alert.alert(t('error_title'), t('chat_error_message'));
     }
   };
 
@@ -175,15 +167,15 @@ const Home = ({ navigation }) => {
     <TouchableOpacity style={styles.card} onPress={() => handleProviderTap(item)}>
       <Image source={{ uri: item.image || 'https://via.placeholder.com/50' }} style={styles.avatar} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{item.servicename || 'Service Provider'}</Text>
+        <Text style={styles.cardTitle}>{item.servicename || t('service_provider')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="location-sharp" size={16} color="#fff" />
-          <Text style={styles.cardLocation}>{item.location || 'Unknown'}</Text>
+          <Text style={styles.cardLocation}>{item.location || t('unknown')}</Text>
         </View>
         <View style={styles.serviceTag}>
-          <Text style={styles.serviceText}>{item.service || 'Service'}</Text>
+          <Text style={styles.serviceText}>{item.service || t('service')}</Text>
         </View>
-        <Text style={styles.cardDescription}>{item.about || 'No description available'}</Text>
+        <Text style={styles.cardDescription}>{item.about || t('no_description')}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -200,7 +192,7 @@ const Home = ({ navigation }) => {
       <StatusBar barStyle="dark-content" />
       <TextInput
         style={styles.search}
-        placeholder="Search for Services"
+        placeholder={t('search_placeholder')}
         placeholderTextColor="gray"
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -209,7 +201,7 @@ const Home = ({ navigation }) => {
       {loading ? (
         <ActivityIndicator size="large" color="#005EB8" />
       ) : filteredProviders.length === 0 ? (
-        <Text style={styles.noProviders}>No providers found.</Text>
+        <Text style={styles.noProviders}>{t('no_providers')}</Text>
       ) : (
         <FlatList
           data={filteredProviders}
@@ -221,7 +213,7 @@ const Home = ({ navigation }) => {
       )}
 
       <Animated.View style={[styles.supportBtn, { transform: pan.getTranslateTransform() }]}>
-        <TouchableOpacity onPress={() => Alert.alert('Support', 'Contact support here')}>
+        <TouchableOpacity onPress={() => Alert.alert(t('support_title'), t('support_message'))}>
           <Ionicons name="help-circle" size={30} color="#fff" />
         </TouchableOpacity>
       </Animated.View>

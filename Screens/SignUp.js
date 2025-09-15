@@ -15,12 +15,15 @@ import { FIREBASE_AUTH, FIRESTORE_DB } from '../Firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next'; // ✅ Added
 
 const Width = Dimensions.get('window').width;
 const Height = Dimensions.get('window').height;
 
 const SignUp = () => {
   const navigation = useNavigation();
+  const { t } = useTranslation(); // ✅ hook
+
   const [isChecked, setIsChecked] = useState(false);
   const [firstName, setFirstName] = useState(''); 
   const [lastName, setLastName] = useState('');
@@ -32,12 +35,12 @@ const SignUp = () => {
 
   const handleSignUp = async () => {
     if (!firstName || !lastName || !number || !password || !email) {
-      Alert.alert('Missing Fields', 'Please fill in all fields.');
+      Alert.alert(t('missing_fields_title'), t('missing_fields_message'));
       return;
     }
 
     if (!isChecked) {
-      Alert.alert('Terms Required', 'Please accept the Terms and Policies.');
+      Alert.alert(t('terms_required_title'), t('terms_required_message'));
       return;
     }
 
@@ -45,24 +48,22 @@ const SignUp = () => {
       const response = await createUserWithEmailAndPassword(auth, email, password);
       const user = response.user;
 
-      // ✅ Update Firebase Auth display name
       await updateProfile(user, {
         displayName: `${firstName} ${lastName}`,
       });
 
-      // ✅ Create Firestore profile with UID
       await setDoc(doc(FIRESTORE_DB, "users", user.uid), {
         uid: user.uid,
         firstName,
         lastName,
         email,
         number,
-        createdAt: serverTimestamp(),  // auto server timestamp
+        createdAt: serverTimestamp(),
       });
 
       Alert.alert(
-        "Success 🎉",
-        "Your account has been created successfully!",
+        t('signup_success_title'),
+        t('signup_success_message'),
         [
           {
             text: "OK",
@@ -72,14 +73,14 @@ const SignUp = () => {
       );
     } catch (error) {
       if (error.code === 'auth/weak-password') {
-        Alert.alert('Weak Password', 'The password provided is too weak.');
+        Alert.alert(t('weak_password_title'), t('weak_password_message'));
       } else if (error.code === 'auth/email-already-in-use') {
-        Alert.alert('Account Exists', 'The account already exists for that email.');
+        Alert.alert(t('account_exists_title'), t('account_exists_message'));
       } else if (error.code === 'auth/invalid-email') {
-        Alert.alert('Invalid Email', 'The email address is invalid.');
+        Alert.alert(t('invalid_email_title'), t('invalid_email_message'));
       } else {
         console.error(error);
-        Alert.alert('Error', 'Something went wrong. Please try again.');
+        Alert.alert(t('error_title'), t('error_message'));
       }
     }
   };
@@ -93,16 +94,16 @@ const SignUp = () => {
         style={styles.backButton} 
         onPress={() => navigation.navigate('Login')}
       >
-        <Text style={styles.backText}>← Back</Text>
+        <Text style={styles.backText}>← {t('back')}</Text>
       </TouchableOpacity>
 
-      <Text style={styles.Top}>Complete your free account setup</Text>
+      <Text style={styles.Top}>{t('signup_title')}</Text>
       <View style={styles.form}>
-        <TextInput placeholder='First Name' placeholderTextColor="#a3a19b" value={firstName} onChangeText={setFirstName} style={styles.input}/>
-        <TextInput placeholder='Last Name' placeholderTextColor="#a3a19b" value={lastName} onChangeText={setLastName} style={styles.input}/>
-        <TextInput placeholder='Email' placeholderTextColor="#a3a19b" value={email} onChangeText={setEmail} style={styles.input}/>
-        <TextInput placeholder='Phone Number' placeholderTextColor="#a3a19b" value={number} onChangeText={setNumber} style={styles.input}/>
-        <TextInput placeholder='Create a Password' secureTextEntry={true} placeholderTextColor="#a3a19b" value={password} onChangeText={setPassword} style={styles.input}/>
+        <TextInput placeholder={t('first_name')} placeholderTextColor="#a3a19b" value={firstName} onChangeText={setFirstName} style={styles.input}/>
+        <TextInput placeholder={t('last_name')} placeholderTextColor="#a3a19b" value={lastName} onChangeText={setLastName} style={styles.input}/>
+        <TextInput placeholder={t('email')} placeholderTextColor="#a3a19b" value={email} onChangeText={setEmail} style={styles.input}/>
+        <TextInput placeholder={t('phone_number')} placeholderTextColor="#a3a19b" value={number} onChangeText={setNumber} style={styles.input}/>
+        <TextInput placeholder={t('create_password')} secureTextEntry={true} placeholderTextColor="#a3a19b" value={password} onChangeText={setPassword} style={styles.input}/>
         
         <View style={styles.policy}>
           <CheckBox 
@@ -111,12 +112,12 @@ const SignUp = () => {
             onClick={() => setIsChecked(!isChecked)}
           />
           <Text style={styles.policytext}>
-            Yes, I understand and agree to the Terms Of Service, including the User Agreement and Privacy Policy
+            {t('terms_text')}
           </Text>
         </View>
 
         <TouchableOpacity onPress={handleSignUp} style={styles.button}>
-          <Text style={styles.buttonext}>Continue</Text>
+          <Text style={styles.buttonext}>{t('continue')}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

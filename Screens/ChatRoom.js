@@ -1,4 +1,3 @@
-// ChatRoom.js
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -26,7 +25,6 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -44,13 +42,11 @@ const ChatRoom = ({ navigation, route }) => {
   const [otherPaymentMethod, setOtherPaymentMethod] = useState(null);
   const flatListRef = useRef(null);
 
-  // -----------------------------
-  // Zoom + Pan + Double-Tap setup
+  // --- Zoom / Pan / Double Tap
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
-
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
@@ -64,7 +60,6 @@ const ChatRoom = ({ navigation, route }) => {
       let newScale = savedScale.value * event.scale;
       newScale = Math.max(1, Math.min(newScale, 3));
       scale.value = newScale;
-
       focalX.value = event.focalX;
       focalY.value = event.focalY;
     })
@@ -90,11 +85,11 @@ const ChatRoom = ({ navigation, route }) => {
     .numberOfTaps(2)
     .onEnd(() => {
       if (scale.value > 1) {
-        scale.value = withTiming(1, { duration: 200 });
-        translateX.value = withTiming(0, { duration: 200 });
-        translateY.value = withTiming(0, { duration: 200 });
+        scale.value = withTiming(1);
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
       } else {
-        scale.value = withTiming(2, { duration: 200 });
+        scale.value = withTiming(2);
       }
     });
 
@@ -114,9 +109,8 @@ const ChatRoom = ({ navigation, route }) => {
       { translateY: -focalY.value },
     ],
   }));
-  // -----------------------------
 
-  // 🔑 Auth + Ensure Chat
+  // --- Auth & Chat setup
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (authUser) => {
       if (!authUser) {
@@ -140,8 +134,8 @@ const ChatRoom = ({ navigation, route }) => {
       try {
         const derivedChatId = [authUser.uid, otherUid].sort().join('_');
         const chatRef = doc(FIRESTORE_DB, 'chats', derivedChatId);
-
         const chatSnap = await getDoc(chatRef);
+
         if (!chatSnap.exists()) {
           await setDoc(chatRef, {
             participants: [authUser.uid, otherUid],
@@ -162,63 +156,40 @@ const ChatRoom = ({ navigation, route }) => {
     return unsubscribe;
   }, [provider, routeChatId]);
 
-  // ✅ Fetch OTHER user’s payment method (from users collection, after resolving participants from chat)
+  // --- Fetch other user's payment method
   useEffect(() => {
     if (!user || !chatId) return;
 
     const fetchPaymentMethod = async () => {
       try {
-        // Step 1: Load chat doc to get participants
         const chatRef = doc(FIRESTORE_DB, 'chats', chatId);
         const chatSnap = await getDoc(chatRef);
+        if (!chatSnap.exists()) return;
 
-        if (!chatSnap.exists()) {
-          console.log("⚠️ No chat doc for:", chatId);
-          return;
-        }
-
-        const chatData = chatSnap.data();
-        const participants = chatData?.participants || [];
-        console.log("👥 Participants from chat:", participants);
-
-        // Step 2: Pick other uid
+        const participants = chatSnap.data()?.participants || [];
         const otherUid = participants.find((uid) => uid !== user.uid);
-        console.log("👉 Other UID:", otherUid);
-
         if (!otherUid) return;
 
-        // Step 3: Get user doc
         const otherRef = doc(FIRESTORE_DB, 'users', otherUid);
         const otherSnap = await getDoc(otherRef);
-
-        if (!otherSnap.exists()) {
-          console.log("⚠️ No user doc for UID:", otherUid);
-          return;
-        }
+        if (!otherSnap.exists()) return;
 
         const otherData = otherSnap.data();
-        console.log("📄 Other user data:", otherData);
-
-        // Step 4: Extract payment field
         if (otherData.paymentMethod) {
           setOtherPaymentMethod(otherData.paymentMethod);
-          console.log("✅ Found paymentMethod:", otherData.paymentMethod);
         } else if (otherData.paymentDetails) {
           setOtherPaymentMethod(otherData.paymentDetails);
-          console.log("✅ Found paymentDetails:", otherData.paymentDetails);
         } else {
-          console.log("❌ No payment info field found in user doc");
           setOtherPaymentMethod(null);
         }
       } catch (err) {
-        console.error("🔥 Error fetching other user payment method:", err);
+        console.error('Error fetching payment method:', err);
       }
     };
 
     fetchPaymentMethod();
   }, [chatId, user]);
 
-  // Show OTHER user’s Payment Method
   const handleShowPayment = () => {
     if (!otherPaymentMethod) {
       Alert.alert('No Payment Method', 'This user has not set up a payment method.');
@@ -235,27 +206,20 @@ const ChatRoom = ({ navigation, route }) => {
     }
   };
 
-  // Subscribe to messages
+  // --- Subscribe to messages
   useEffect(() => {
     if (!chatId) return;
 
     const messagesRef = collection(FIRESTORE_DB, 'chats', chatId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        setMessages(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-      },
-      (err) => {
-        console.error('❌ Snapshot error:', err);
-        setError(err.code === 'permission-denied'
-          ? "You don't have access to this chat."
-          : 'Something went wrong while loading messages.'
-        );
-      }
-    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setError(null);
+    }, (err) => {
+      console.error('Snapshot error:', err);
+      setError('Something went wrong while loading messages.');
+    });
 
     return unsubscribe;
   }, [chatId]);
@@ -271,30 +235,14 @@ const ChatRoom = ({ navigation, route }) => {
       });
 
       const chatRef = doc(FIRESTORE_DB, 'chats', chatId);
-      const chatSnap = await getDoc(chatRef);
-      if (!chatSnap.exists()) return;
-      const chatData = chatSnap.data();
-
-      const updatedMeta = { ...chatData.meta };
-      for (const uid of chatData.participants) {
-        if (uid !== user.uid) {
-          const oldCount = updatedMeta?.[uid]?.unreadCount || 0;
-          updatedMeta[uid] = {
-            ...updatedMeta[uid],
-            unreadCount: oldCount + 1,
-          };
-        }
-      }
-
       await updateDoc(chatRef, {
         lastMessage: message,
         updatedAt: serverTimestamp(),
-        meta: updatedMeta,
       });
 
       setMessage('');
     } catch (err) {
-      console.error('❌ Error sending message:', err);
+      console.error('Error sending message:', err);
       Alert.alert('Error', "You don't have permission to send a message in this chat.");
     }
   };
@@ -322,7 +270,6 @@ const ChatRoom = ({ navigation, route }) => {
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
 
-            {/* Payment button */}
             <TouchableOpacity onPress={handleShowPayment} style={styles.paymentButton}>
               <Ionicons name="card-outline" size={24} color="black" />
             </TouchableOpacity>
@@ -330,7 +277,9 @@ const ChatRoom = ({ navigation, route }) => {
 
           {/* Messages */}
           {error ? (
-            <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
           ) : (
             <FlatList
               ref={flatListRef}

@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { getAuth, signOut } from 'firebase/auth'; 
 import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useTranslation } from 'react-i18next';
 
 const Width = Dimensions.get('window').width;
 const Height = Dimensions.get('window').height;
@@ -16,8 +17,9 @@ const Profile = () => {
   const navigation = useNavigation();
   const auth = getAuth();
   const currentUser = auth.currentUser;
+  const { t } = useTranslation();
 
-  const [fullName, setFullName] = useState(currentUser?.displayName || "Your Name");
+  const [fullName, setFullName] = useState(currentUser?.displayName || t("your_name"));
   const [profileImage, setProfileImage] = useState(null);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ const Profile = () => {
             const userData = userDoc.data();
             setFullName(`${userData.firstName} ${userData.lastName}`);
             if (userData.profileImage) {
-              setProfileImage(userData.profileImage); // load saved profile image
+              setProfileImage(userData.profileImage);
             }
           }
         } catch (error) {
@@ -53,7 +55,7 @@ const Profile = () => {
   const pickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
-      alert("Permission to access media library is required!");
+      alert(t("media_permission_required"));
       return;
     }
 
@@ -66,10 +68,9 @@ const Profile = () => {
 
     if (!result.canceled && currentUser?.uid) {
       const localUri = result.assets[0].uri;
-      setProfileImage(localUri); // show immediately
+      setProfileImage(localUri);
 
       try {
-        // upload to Firebase Storage
         const response = await fetch(localUri);
         const blob = await response.blob();
 
@@ -78,12 +79,11 @@ const Profile = () => {
 
         const downloadURL = await getDownloadURL(storageRef);
 
-        // save URL in Firestore
         await updateDoc(doc(db, "users", currentUser.uid), {
           profileImage: downloadURL,
         });
 
-        setProfileImage(downloadURL); // replace local with cloud URL
+        setProfileImage(downloadURL);
       } catch (error) {
         console.error("Error uploading profile image:", error);
       }
@@ -92,65 +92,56 @@ const Profile = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header with back button */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons 
-            name="arrow-back" 
-            size={30} 
-            color="white" 
-            style={{ marginTop: 25 }} 
-          />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={26} color="white" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t("profile")}</Text>
       </View>
 
-      {/* Profile picture and name */}
-      <View style={styles.profileContainer}>
-        {profileImage ? (
-          <Image source={{ uri: profileImage }} style={styles.profileImage} />
-        ) : (
-          <View style={styles.profileImagePlaceholder}>
-            <Ionicons name="person" size={60} color="#999" />
-          </View>
-        )}
+      {/* Profile Card */}
+      <View style={styles.profileCard}>
+        <TouchableOpacity onPress={pickImage}>
+          {profileImage ? (
+            <Image source={{ uri: profileImage }} style={styles.profileImage} />
+          ) : (
+            <View style={styles.profileImagePlaceholder}>
+              <Ionicons name="person" size={70} color="#aaa" />
+            </View>
+          )}
+        </TouchableOpacity>
+
         <Text style={styles.name}>{fullName}</Text>
+        <TouchableOpacity onPress={pickImage}>
+          <Text style={styles.editText}>{t("edit_profile")}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Buttons */}
+      {/* Action Buttons */}
       <View style={styles.buttonsContainer}>
-        <TouchableOpacity style={styles.button} onPress={pickImage}>
-          <Text style={styles.buttonText}>Edit Profile</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity  
+        <TouchableOpacity
           style={styles.button}
-          onPress={() => {
-            if (currentUser?.email) {
-              navigation.navigate('UserServices', { userEmail: currentUser.email });
-            }
-          }}
+          onPress={() => navigation.navigate('UserServices', { userEmail: currentUser?.email })}
         >
-          <Text style={styles.buttonText}>Posted Services</Text>
+          <Ionicons name="briefcase-outline" size={20} color="#24a0e8" />
+          <Text style={styles.buttonText}>{t("posted_services")}</Text>
         </TouchableOpacity>
 
-        {/* ✅ New Buttons */}
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={() => navigation.navigate('Payments')}
-        >
-          <Text style={styles.buttonText}>Payments</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Payments')}>
+          <Ionicons name="card-outline" size={20} color="#24a0e8" />
+          <Text style={styles.buttonText}>{t("payments")}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={() => navigation.navigate('Support')}
-        >
-          <Text style={styles.buttonText}>Contact Support</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Support')}>
+          <Ionicons name="help-circle-outline" size={20} color="#24a0e8" />
+          <Text style={styles.buttonText}>{t("contact_support")}</Text>
         </TouchableOpacity>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={[styles.button, { backgroundColor: '#ff4d4d' }]} onPress={handleLogout}>
-          <Text style={[styles.buttonText, { color: 'white' }]}>Logout</Text>
+        {/* Logout */}
+        <TouchableOpacity style={[styles.logoutButton]} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color="white" />
+          <Text style={styles.logoutText}>{t("logout")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -158,47 +149,69 @@ const Profile = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: '#f9f9f9' },
+
   header: {
-    backgroundColor: '#24a0e8ff',
-    height: Height * 0.15,
-    justifyContent: 'center',
-    paddingLeft: 15,
+    backgroundColor: '#24a0e8',
+    height: Height * 0.12,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingBottom: 12,
+    paddingHorizontal: 15,
   },
-  profileContainer: { alignItems: 'center', marginTop: -Height * 0.075 },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: 'white',
+  backBtn: { marginRight: 15 },
+  headerTitle: { fontSize: 20, fontWeight: "600", color: "white" },
+
+  profileCard: {
+    backgroundColor: "white",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: -40,
+    paddingVertical: 25,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
+  profileImage: { width: 110, height: 110, borderRadius: 55, borderWidth: 2, borderColor: "#24a0e8" },
   profileImagePlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#e0e0e0',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "#e0e0e0",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: 'white',
   },
-  name: { marginTop: 15, fontSize: 24, fontWeight: 'bold', color: '#333' },
-  buttonsContainer: { alignItems: 'center' },
+  name: { marginTop: 12, fontSize: 22, fontWeight: "700", color: "#333" },
+  editText: { color: "#24a0e8", fontSize: 15, marginTop: 4 },
+
+  buttonsContainer: { marginTop: 25, paddingHorizontal: 20 },
   button: {
-    backgroundColor: 'white',
-    width: Width * 0.8,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginVertical: 10,
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingVertical: 14,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    marginVertical: 8,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
-  buttonText: { fontSize: 18, color: '#333' },
+  buttonText: { fontSize: 16, marginLeft: 10, color: "#333" },
+
+  logoutButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#ff4d4d",
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 20,
+  },
+  logoutText: { fontSize: 16, marginLeft: 8, color: "white", fontWeight: "600" },
 });
 
 export default Profile;
